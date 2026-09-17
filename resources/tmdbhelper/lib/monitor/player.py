@@ -1,3 +1,4 @@
+import xbmcvfs
 from xbmc import Player, Monitor
 from jurialmunkey.ftools import cached_property
 from tmdbhelper.lib.monitor.images import ImageFunctions
@@ -345,8 +346,37 @@ class PlayerMonitor(Player, CommonMonitorFunctions):
     def tmdb_id(self):
         return self.player_item.tmdb_id
 
-    def get_clearlogo(self):
+    def get_playing_strm_path(self):
+        try:
+            # Kodi keeps the original STRM in ListItem.Path while getPlayingFile() returns its resolved URL.
+            source_path = self.getPlayingItem().getPath()
+        except (AttributeError, RuntimeError):
+            return ''
+
+        if not source_path or not source_path.lower().endswith('.strm'):
+            return ''
+        return source_path
+
+    @staticmethod
+    def get_strm_sidecar_artwork(source_path, art_type):
+        if not source_path:
+            return ''
+
+        base_path = source_path[:-len('.strm')]
+        for extension in ('.jpg', '.png'):
+            candidate = f'{base_path}-{art_type}{extension}'
+            if xbmcvfs.exists(candidate):
+                return candidate
+        return ''
+
+    def get_clearlogo(self, strm_path=''):
         art = self.player_item.get_artwork()
+        if strm_path:
+            return (
+                self.get_strm_sidecar_artwork(strm_path, 'clearlogo')
+                or art.get('clearlogo')
+                or art.get('tvshow.clearlogo')
+            )
         return (
             (
                 art.get('clearlogo')
@@ -366,36 +396,47 @@ class PlayerMonitor(Player, CommonMonitorFunctions):
 
         )
 
-    def update_crop(self):
+    def update_crop(self, strm_path=''):
         if get_condvisibility("!Skin.HasSetting(TMDbHelper.EnableCrop)"):
             return
 
-        clearlogo = self.get_clearlogo()
+        clearlogo = self.get_clearlogo(strm_path)
 
         if clearlogo != self.previous_clearlogo:
             ImageFunctions(method='crop', is_thread=False, prefix='Player', artwork=clearlogo).run()
             self.previous_clearlogo = clearlogo
 
-    def update_blur(self):
+    def update_blur(self, strm_path=''):
         if get_condvisibility("!Skin.HasSetting(TMDbHelper.EnableBlur)"):
             return
 
         art = self.player_item.get_artwork()
 
-        fanart = (
-            get_infolabel('Player.Art(fanart)')
-            or get_infolabel('Player.Art(artist.fanart)')
-            or get_infolabel('Player.Art(tvshow.fanart)')
-            or art.get('fanart')
-            or art.get('tvshow.fanart'))
+        if strm_path:
+            # Player.Art may be derived from the resolved URL, so it is unsafe as a STRM fallback.
+            fanart = (
+                self.get_strm_sidecar_artwork(strm_path, 'fanart')
+                or art.get('fanart')
+                or art.get('tvshow.fanart'))
+            poster = (
+                self.get_strm_sidecar_artwork(strm_path, 'poster')
+                or art.get('poster')
+                or art.get('tvshow.poster'))
+        else:
+            fanart = (
+                get_infolabel('Player.Art(fanart)')
+                or get_infolabel('Player.Art(artist.fanart)')
+                or get_infolabel('Player.Art(tvshow.fanart)')
+                or art.get('fanart')
+                or art.get('tvshow.fanart'))
 
-        poster = (
-            get_infolabel('Player.Art(poster)')
-            or get_infolabel('Player.Art(artist.poster)')
-            or get_infolabel('Player.Art(tvshow.poster)')
-            or get_infolabel('Player.Icon')
-            or art.get('poster')
-            or art.get('tvshow.poster'))
+            poster = (
+                get_infolabel('Player.Art(poster)')
+                or get_infolabel('Player.Art(artist.poster)')
+                or get_infolabel('Player.Art(tvshow.poster)')
+                or get_infolabel('Player.Icon')
+                or art.get('poster')
+                or art.get('tvshow.poster'))
 
         if poster != self.previous_poster:
             ImageFunctions(method='blur', is_thread=False, prefix='Player.Poster', artwork=poster).run()
@@ -406,8 +447,9 @@ class PlayerMonitor(Player, CommonMonitorFunctions):
             self.previous_fanart = fanart
 
     def update_artwork(self):
-        self.update_crop()
-        self.update_blur()
+        strm_path = self.get_playing_strm_path()
+        self.update_crop(strm_path)
+        self.update_blur(strm_path)
 
     def clear_artwork(self):
         self.clear_property('CropImage')
