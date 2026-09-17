@@ -6,6 +6,10 @@
 
 See [TMDbHelper Wiki](https://github.com/jurialmunkey/plugin.video.themoviedb.helper/wiki) for usage
 
+## Fork documentation
+
+- [ISO STRM playback artwork incident and fix](docs/iso-strm-sidecar-artwork-incident.md)
+
 
 
 ## Installation 
