@@ -7,6 +7,7 @@ on:
     
 jobs:
   dispatch:
+    if: github.repository == 'wabisabi926/plugin.video.themoviedb.helper'
     runs-on: ubuntu-latest
     strategy:
       matrix:
