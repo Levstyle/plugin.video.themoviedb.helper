@@ -634,25 +634,44 @@ class ItemMapperMethods:
 
     @staticmethod
     def get_art(items, **kwargs):
-        if not items:
+        # TMDb occasionally returns malformed artwork members (for example an
+        # integer instead of the expected list).  Artwork is optional, so a
+        # bad response must not abort the whole player monitor callback.
+        if not isinstance(items, dict):
             return []
 
         data = []
 
         for artwork_type, artworks in items.items():
+            if not isinstance(artworks, (list, tuple)):
+                continue
             for artwork in artworks:
-                path = artwork['file_path']
+                if not isinstance(artwork, dict):
+                    continue
+
+                path = artwork.get('file_path')
+                if not path:
+                    continue
+
+                aspect_ratio = artwork.get('aspect_ratio')
+                width = artwork.get('width')
+                height = artwork.get('height')
+                vote_average = artwork.get('vote_average')
+                if not all(isinstance(value, (int, float)) for value in
+                           (aspect_ratio, width, height, vote_average)):
+                    continue
+
                 data.append(
                     ExtendedMap('art', get_blanks_none(path), True, {
-                        'aspect_ratio': ItemMapperMethods.get_aspect_ratio(artwork['aspect_ratio']),
-                        'quality': int((artwork['width'] * artwork['height']) // 200000),  # Quality integer to nearest fifth of a megapixel
-                        'iso_language': get_blanks_none(artwork['iso_639_1']),
-                        'iso_country': get_blanks_none(artwork['iso_3166_1']),
+                        'aspect_ratio': ItemMapperMethods.get_aspect_ratio(aspect_ratio),
+                        'quality': int((width * height) // 200000),  # Quality integer to nearest fifth of a megapixel
+                        'iso_language': get_blanks_none(artwork.get('iso_639_1')),
+                        'iso_country': get_blanks_none(artwork.get('iso_3166_1')),
                         'icon': get_blanks_none(path),
                         'type': get_blanks_none(artwork_type),
                         'extension': get_blanks_none(path.split('.')[-1] if path else None),
-                        'rating': int(artwork['vote_average'] * 100),
-                        'votes': get_blanks_none(artwork['vote_count'])
+                        'rating': int(vote_average * 100),
+                        'votes': get_blanks_none(artwork.get('vote_count'))
                     })
                 )
 
